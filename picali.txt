@@ -1,0 +1,303 @@
+from picamera2 import Picamera2
+import cv2
+import time
+import os
+
+# =========================================================
+# SETTINGS
+# =========================================================
+
+IMAGE_WIDTH = 1280
+IMAGE_HEIGHT = 720
+
+SAVE_WIDTH = 1280
+SAVE_HEIGHT = 720
+
+# =========================================================
+# FOLDERS
+# =========================================================
+
+LEFT_DIR = "calibration_images/left"
+RIGHT_DIR = "calibration_images/right"
+
+os.makedirs(LEFT_DIR, exist_ok=True)
+os.makedirs(RIGHT_DIR, exist_ok=True)
+
+# =========================================================
+# CAMERAS
+# =========================================================
+
+left_cam = Picamera2(0)
+right_cam = Picamera2(1)
+
+# =========================================================
+# CONFIGURATION
+# =========================================================
+
+config_left = left_cam.create_preview_configuration(
+    main={
+        "size": (IMAGE_WIDTH, IMAGE_HEIGHT),
+        "format": "RGB888"
+    }
+)
+
+config_right = right_cam.create_preview_configuration(
+    main={
+        "size": (IMAGE_WIDTH, IMAGE_HEIGHT),
+        "format": "RGB888"
+    }
+)
+
+left_cam.configure(config_left)
+right_cam.configure(config_right)
+
+# =========================================================
+# START
+# =========================================================
+
+left_cam.start()
+right_cam.start()
+
+time.sleep(2)
+
+print()
+print("==============================================")
+print(" IMX219-83 STEREO CALIBRATION IMAGE CAPTURE")
+print("==============================================")
+print()
+print("S = Save LEFT + RIGHT stereo pair")
+print("Q = Quit")
+print()
+
+# =========================================================
+# FIND NEXT IMAGE NUMBER
+# =========================================================
+
+pair_number = 1
+
+while True:
+
+    left_file = os.path.join(
+        LEFT_DIR,
+        f"left_{pair_number:02d}.jpg"
+    )
+
+    right_file = os.path.join(
+        RIGHT_DIR,
+        f"right_{pair_number:02d}.jpg"
+    )
+
+    if not os.path.exists(left_file) and not os.path.exists(right_file):
+        break
+
+    pair_number += 1
+
+print(f"Starting from pair: {pair_number}")
+
+# =========================================================
+# WINDOW
+# =========================================================
+
+cv2.namedWindow(
+    "STEREO CALIBRATION",
+    cv2.WINDOW_NORMAL
+)
+
+cv2.resizeWindow(
+    "STEREO CALIBRATION",
+    1920,
+    720
+)
+
+# =========================================================
+# MAIN LOOP
+# =========================================================
+
+while True:
+
+    # -----------------------------------------------------
+    # CAPTURE BOTH CAMERAS
+    # -----------------------------------------------------
+
+    left = left_cam.capture_array()
+    right = right_cam.capture_array()
+
+    # IMPORTANT:
+    # DO NOT use RGB2BGR here.
+    #
+    # RGB888 from Picamera2 is already suitable for OpenCV.
+    # -----------------------------------------------------
+
+    # -----------------------------------------------------
+    # MAKE DISPLAY COPIES
+    # -----------------------------------------------------
+
+    left_display = left.copy()
+    right_display = right.copy()
+
+    # -----------------------------------------------------
+    # LABELS
+    # -----------------------------------------------------
+
+    cv2.putText(
+        left_display,
+        "LEFT CAMERA",
+        (20, 45),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (0, 255, 0),
+        2
+    )
+
+    cv2.putText(
+        right_display,
+        "RIGHT CAMERA",
+        (20, 45),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (0, 255, 0),
+        2
+    )
+
+    # -----------------------------------------------------
+    # PAIR NUMBER
+    # -----------------------------------------------------
+
+    cv2.putText(
+        left_display,
+        f"PAIR: {pair_number:02d}",
+        (20, 90),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (0, 255, 255),
+        2
+    )
+
+    cv2.putText(
+        right_display,
+        f"PAIR: {pair_number:02d}",
+        (20, 90),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (0, 255, 255),
+        2
+    )
+
+    # -----------------------------------------------------
+    # INSTRUCTIONS
+    # -----------------------------------------------------
+
+    cv2.putText(
+        left_display,
+        "Press S = SAVE PAIR",
+        (20, 130),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2
+    )
+
+    cv2.putText(
+        right_display,
+        "Press Q = QUIT",
+        (20, 130),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2
+    )
+
+    # -----------------------------------------------------
+    # DISPLAY SIZE
+    # -----------------------------------------------------
+
+    left_show = cv2.resize(
+        left_display,
+        (960, 540)
+    )
+
+    right_show = cv2.resize(
+        right_display,
+        (960, 540)
+    )
+
+    # -----------------------------------------------------
+    # SIDE BY SIDE
+    # -----------------------------------------------------
+
+    stereo = cv2.hconcat([
+        left_show,
+        right_show
+    ])
+
+    cv2.imshow(
+        "STEREO CALIBRATION",
+        stereo
+    )
+
+    # -----------------------------------------------------
+    # KEY
+    # -----------------------------------------------------
+
+    key = cv2.waitKey(1) & 0xFF
+
+    # =====================================================
+    # SAVE PAIR
+    # =====================================================
+
+    if key == ord('s'):
+
+        left_filename = os.path.join(
+            LEFT_DIR,
+            f"left_{pair_number:02d}.jpg"
+        )
+
+        right_filename = os.path.join(
+            RIGHT_DIR,
+            f"right_{pair_number:02d}.jpg"
+        )
+
+        # Save BOTH images from the current capture
+        cv2.imwrite(
+            left_filename,
+            left
+        )
+
+        cv2.imwrite(
+            right_filename,
+            right
+        )
+
+        print(
+            f"Saved pair {pair_number:02d}: "
+            f"{left_filename} + {right_filename}"
+        )
+
+        pair_number += 1
+
+        # Small delay to prevent accidental double capture
+        time.sleep(0.3)
+
+    # =====================================================
+    # EXIT
+    # =====================================================
+
+    elif key == ord('q'):
+        break
+
+
+# =========================================================
+# CLEANUP
+# =========================================================
+
+left_cam.stop()
+right_cam.stop()
+
+cv2.destroyAllWindows()
+
+print()
+print("==============================================")
+print(" CAPTURE COMPLETE")
+print("==============================================")
+print(f"Images saved: {pair_number - 1}")
+print()
